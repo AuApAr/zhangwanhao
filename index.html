@@ -54,6 +54,7 @@
   <div class="btn" id="bCrouch">蹲</div>
 </div>
 <div id="hint">键盘：←→ 移动 · ↑/空格 跳 · ↓/C 蹲</div>
+<button id="bMute" style="position:fixed; top:14px; right:14px; z-index:25; width:48px; height:48px; border-radius:50%; border:none; background:rgba(0,0,0,.45); color:#fff; font-size:22px; line-height:1;">🔊</button>
 
 <div class="overlay" id="startScreen">
   <h1>💩 张畹昊牛逼 💩</h1>
@@ -431,11 +432,65 @@ function loop() {
   requestAnimationFrame(loop);
 }
 
+/* ============ 背景音乐（Web Audio 合成 8-bit 循环） ============ */
+let audioCtx = null, musicTimer = null, musicOn = false;
+
+function noteFreq(m){ return 440 * Math.pow(2, (m - 69) / 12); }
+
+function playTone(freq, t, dur, type, vol) {
+  if (!audioCtx) return;
+  const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+  o.type = type; o.frequency.value = freq;
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.linearRampToValueAtTime(vol, t + 0.012);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(g); g.connect(audioCtx.destination);
+  o.start(t); o.stop(t + dur + 0.05);
+}
+
+// 4 小节轻松循环（C 大调：C-G-Am-F）
+const MELODY = [72,0,76,0, 79,76,74,72,  67,0,71,0, 74,72,71,67,
+                69,0,72,0, 76,74,72,69,  65,0,69,0, 67,0,71,0];
+const BASS   = [48,48,55,55, 48,48,55,55,  43,43,50,50, 43,43,50,50,
+                45,45,52,52, 45,45,52,52,  41,41,43,43, 45,45,43,43];
+const STEP = 0.15;
+
+function scheduleLoop(t0) {
+  const n = MELODY.length;
+  for (let i = 0; i < n; i++) {
+    const t = t0 + i * STEP;
+    if (MELODY[i]) playTone(noteFreq(MELODY[i]), t, STEP * 0.92, 'square', 0.045);
+    playTone(noteFreq(BASS[i]), t, STEP * 0.95, 'triangle', 0.085);
+  }
+  return t0 + n * STEP;
+}
+
+function startMusic() {
+  if (musicOn) return;
+  try { audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)(); }
+  catch(e) { return; }
+  if (audioCtx.resume) audioCtx.resume();
+  musicOn = true;
+  let next = audioCtx.currentTime + 0.1;
+  const tick = () => { while (next < audioCtx.currentTime + 0.8) next = scheduleLoop(next); };
+  tick();
+  musicTimer = setInterval(tick, 250);
+}
+
+function toggleMute() {
+  if (!audioCtx) { startMusic(); return; }
+  if (audioCtx.state === 'running') audioCtx.suspend();
+  else audioCtx.resume();
+  document.getElementById('bMute').textContent = (audioCtx.state === 'running') ? '🔊' : '🔇';
+}
+
 /* ============ 启动 ============ */
 document.getElementById('startBtn').addEventListener('click', () => {
   document.getElementById('startScreen').style.display = 'none';
+  startMusic();
   reset();
 });
+document.getElementById('bMute').addEventListener('click', toggleMute);
 document.getElementById('winScreen').addEventListener('click', () => {
   document.getElementById('winScreen').style.display = 'none';
   reset();
